@@ -35,6 +35,12 @@ int actuatorDeadzones[] = {A1_DEZ, A2_DEZ, A3_DEZ, A4_DEZ};
 int actuatorMinimums[] = {0, 0, 0, 0};
 int actuatorMaximums[] = {255, 255, 255, 255};
 
+/*  
+    CAUTION CAUTION CAUTION
+    Hard limits are not yet implemented, Don't rely on them to
+    stop the automatic limit detection etc from doing bad things
+    if your actuators dont have a safe endstop
+*/
 int actuatorHardLimitsUpper[] = {255, 255, 255, 255};
 int actuatorHardLimitsLower[] = {0, 0, 0, 0};
 
@@ -82,7 +88,7 @@ void loop() {
       
       //Actuator movement commands
       if ( mainCommand == "move" )
-        {
+      {
           int actuatorToMove = command.substring(5,6).toInt();
           int newPos = command.substring(7).toInt();
           Serial.print("Moving Actuator ");
@@ -90,11 +96,12 @@ void loop() {
           Serial.print(" to new position ");
           Serial.println(newPos);
           actuatorTargets[actuatorToMove - 1] = newPos;
-        }
-      }        
-      command = "";
-
       }
+      
+      if ( mainCommand == "save" ) { saveSettings(); }
+    }
+    command = "";
+  }
 }
 
 void moveActuators() {
@@ -185,6 +192,7 @@ void loadSettings()
 
 void saveSettings()
 {
+  Serial.print("Saving settings to EEPROM... ");
   for ( int curActuator = 0; curActuator < ACTUATOR_COUNT; curActuator++ )
   {
     int eepromOffset = curActuator * 4;
@@ -194,10 +202,14 @@ void saveSettings()
     EEPROM.write(eepromOffset + 3, actuatorHardLimitsUpper[curActuator]);
     EEPROM.write(eepromOffset + 4, actuatorHardLimitsLower[curActuator]);
   }
+  Serial.println("Done!");
 }
 
 void autoProbeLimits()
 {
+  /* TODO:  This code needs to be reimplemented as non-blocking so that we can monitor
+            the position of the actuator in real time to implement hard limits
+  */
   for ( int curActuator = 0; curActuator < ACTUATOR_COUNT; curActuator++ )
   {
      Serial.print("Probing minimum for actuator ");
