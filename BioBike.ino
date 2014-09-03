@@ -1,4 +1,10 @@
 
+/*
+BioBike V0.2 Firmware
+Daniel Harmsworth, 2014-09
+Challenger Institute of Technology
+*/
+
 #include <cstdlib>
 #include <EEPROM.h>
 
@@ -35,17 +41,11 @@ int actuatorDeadzones[] = {A1_DEZ, A2_DEZ, A3_DEZ, A4_DEZ};
 int actuatorMinimums[] = {0, 0, 0, 0};
 int actuatorMaximums[] = {255, 255, 255, 255};
 
-/*  
-    CAUTION CAUTION CAUTION
-    Hard limits are not yet implemented, Don't rely on them to
-    stop the automatic limit detection etc from doing bad things
-    if your actuators dont have a safe endstop
-*/
 int actuatorHardLimitsUpper[] = {255, 255, 255, 255};
 int actuatorHardLimitsLower[] = {0, 0, 0, 0};
 
-int actuatorTargets[4];
-int actuatorErrors[4];
+int actuatorTargets[ACTUATOR_COUNT];
+int actuatorErrors[ACTUATOR_COUNT];
 
 String command;
 int menuContext = 0;
@@ -105,7 +105,7 @@ void loop() {
 }
 
 void moveActuators() {
-  for ( int curActuator = 0; curActuator < 4; curActuator++ )
+  for ( int curActuator = 0; curActuator < ACTUATOR_COUNT; curActuator++ )
   {
     int curPosition = getActuatorPosition(curActuator);
     int curError;// = abs(actuatorTargets[curActuator]-curPosition);
@@ -207,30 +207,39 @@ void saveSettings()
 
 void autoProbeLimits()
 {
-  /* TODO:  This code needs to be reimplemented as non-blocking so that we can monitor
-            the position of the actuator in real time to implement hard limits
-  */
   for ( int curActuator = 0; curActuator < ACTUATOR_COUNT; curActuator++ )
   {
+     int lastMillis = millis();
      Serial.print("Probing minimum for actuator ");
      Serial.print(curActuator);
      Serial.print("...");
-     digitalWrite(actuatorDirPins[curActuator], 0);
-     analogWrite(actuatorPWMPins[curActuator], 128);
-     int lastReading = 255;
-     while (getActuatorPosition(actuatorRefPins[curActuator]) < lastReading) { delay(50); Serial.print(".");}
-     analogWrite(actuatorPWMPins[curActuator], 0);
+     int lastReading = 255;      //Set the last reading to as far from the target as possible
+     bool stillMoving = true;
+     actuatorTargets[curActuator] = actuatorHardLimitsLower[curActuator];
+     while (stillMoving) {
+       moveActuators();
+       //Only do a delta ref check if its been 1000mS since we last checked
+       if ( (millis() - lastMillis) >= 1000 ) {
+         if ( getActuatorPosition(actuatorRefPins[curActuator]) ==  lastReading ) { stillMoving = false; }
+       }
+     }
      actuatorMinimums[curActuator] = getActuatorPosition(actuatorRefPins[curActuator]);
      Serial.println(" Done!");
      
-     Serial.print("Probing maximum for actuator ");
+     lastMillis = millis();
+     Serial.print("Probing minimum for actuator ");
      Serial.print(curActuator);
      Serial.print("...");
-     lastReading = 0;
-     digitalWrite(actuatorDirPins[curActuator], 1);
-     analogWrite(actuatorPWMPins[curActuator], 128);
-     while (getActuatorPosition(actuatorRefPins[curActuator]) > lastReading) { delay(50); Serial.print(".");}
-     analogWrite(actuatorPWMPins[curActuator], 0);
+     lastReading = 0;      //Set the last reading to as far from the target as possible
+     stillMoving = true;
+     actuatorTargets[curActuator] = actuatorHardLimitsUpper[curActuator];
+     while (stillMoving) {
+       moveActuators();
+       //Only do a delta ref check if its been 1000mS since we last checked
+       if ( (millis() - lastMillis) >= 1000 ) {
+         if ( getActuatorPosition(actuatorRefPins[curActuator]) ==  lastReading ) { stillMoving = false; }
+       }
+     }
      actuatorMaximums[curActuator] = getActuatorPosition(actuatorRefPins[curActuator]);
      Serial.println(" Done!");
   }
