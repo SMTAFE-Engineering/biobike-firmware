@@ -227,7 +227,7 @@ void autoProbeLimits()
      Serial.println(" Done!");
      
      lastMillis = millis();
-     Serial.print("Probing minimum for actuator ");
+     Serial.print("Probing maximum for actuator ");
      Serial.print(curActuator);
      Serial.print("...");
      lastReading = 0;      //Set the last reading to as far from the target as possible
