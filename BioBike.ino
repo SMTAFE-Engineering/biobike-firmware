@@ -1,16 +1,17 @@
 
 /*
 BioBike V0.2 Firmware
-Daniel Harmsworth, 2014-09
-Challenger Institute of Technology
-*/
+ Daniel Harmsworth, 2014-09
+ Challenger Institute of Technology
+ */
 
 #include <cstdlib>
 #include <EEPROM.h>
 
 #define ACTUATOR_COUNT 4
 
-#define MAXCHAR 120
+#define MAXCHAR 20
+#define COMMANDDEPTH 10
 #define NEWLINE 10
 
 #define A1_DIR 8
@@ -33,22 +34,32 @@ Challenger Institute of Technology
 #define A4_REF A0
 #define A4_DEZ 5
 
-int actuatorDirPins[] = {A1_DIR, A2_DIR, A3_DIR, A4_DIR};
-int actuatorPWMPins[] = {A1_PWM, A2_PWM, A3_PWM, A4_PWM};
-int actuatorRefPins[] = {A1_REF, A2_REF, A3_REF, A4_REF};
-int actuatorDeadzones[] = {A1_DEZ, A2_DEZ, A3_DEZ, A4_DEZ};
+int actuatorDirPins[] = {
+  A1_DIR, A2_DIR, A3_DIR, A4_DIR};
+int actuatorPWMPins[] = {
+  A1_PWM, A2_PWM, A3_PWM, A4_PWM};
+int actuatorRefPins[] = {
+  A1_REF, A2_REF, A3_REF, A4_REF};
+int actuatorDeadzones[] = {
+  A1_DEZ, A2_DEZ, A3_DEZ, A4_DEZ};
 
-int actuatorMinimums[] = {0, 0, 0, 0};
-int actuatorMaximums[] = {255, 255, 255, 255};
+int actuatorMinimums[] = {
+  0, 0, 0, 0};
+int actuatorMaximums[] = {
+  255, 255, 255, 255};
 
-int actuatorHardLimitsUpper[] = {255, 255, 255, 255};
-int actuatorHardLimitsLower[] = {0, 0, 0, 0};
+int actuatorHardLimitsUpper[] = {
+  255, 255, 255, 255};
+int actuatorHardLimitsLower[] = {
+  0, 0, 0, 0};
 
 int actuatorTargets[ACTUATOR_COUNT];
 int actuatorErrors[ACTUATOR_COUNT];
 
-String command;
-int menuContext = 0;
+char command[COMMANDDEPTH][MAXCHAR];
+
+int stringPos = 0;
+int commandPos = 0;
 
 
 void setup() {
@@ -77,30 +88,37 @@ void loop() {
     char incomingByte = Serial.read();
     if (incomingByte != NEWLINE)
     {
-      command += incomingByte;
+      if ( incomingByte == ' ' ) { commandPos++; stringPos = 0; }
+
+      command[commandPos][stringPos] = incomingByte;
+      stringPos++;
     }
     else
-    {
-      command.toLowerCase();
-      int commandOffset = command.indexOf(' ');
-      String mainCommand = command.substring(0,commandOffset);
-      if ( mainCommand == "showpos") { showPositions(); }
-      
+    {      
+      if ( strcmp(command[0],"showpos") == 0 ) { 
+        showPositions();
+      }
+
       //Actuator movement commands
-      if ( mainCommand == "move" )
+      if ( strcmp(command[0], "move") == 0 )
       {
-          int actuatorToMove = command.substring(5,6).toInt();
-          int newPos = command.substring(7).toInt();
-          Serial.print("Moving Actuator ");
-          Serial.print(actuatorToMove);
-          Serial.print(" to new position ");
-          Serial.println(newPos);
-          actuatorTargets[actuatorToMove - 1] = newPos;
+        int actuatorToMove = atoi(command[1]);
+        int newPos = atoi(command[2]);
+        Serial.print("Moving Actuator ");
+        Serial.print(actuatorToMove);
+        Serial.print(" to new position ");
+        Serial.println(newPos);
+        actuatorTargets[actuatorToMove - 1] = newPos;
+      }
+
+      if ( strcmp(command[0], "save") == 0 ) { 
+        saveSettings(); 
       }
       
-      if ( mainCommand == "save" ) { saveSettings(); }
+      for ( int i = 0; i < COMMANDDEPTH; i++ ) { memset(command[i], 0, MAXCHAR); }
+      commandPos = 0;
+      stringPos = 0;
     }
-    command = "";
   }
 }
 
@@ -110,14 +128,23 @@ void moveActuators() {
     int curPosition = getActuatorPosition(curActuator);
     int curError;// = abs(actuatorTargets[curActuator]-curPosition);
     int curErDir;
-    if (curPosition < actuatorTargets[curActuator]) { curErDir = HIGH; curError = abs(actuatorTargets[curActuator] - curPosition); } else { curErDir = LOW; curError = abs(curPosition - actuatorTargets[curActuator]); }
+    if (curPosition < actuatorTargets[curActuator]) { 
+      curErDir = HIGH; 
+      curError = abs(actuatorTargets[curActuator] - curPosition); 
+    } 
+    else { 
+      curErDir = LOW; 
+      curError = abs(curPosition - actuatorTargets[curActuator]); 
+    }
     actuatorErrors[curActuator] = curError;
 
     if ( curError >= actuatorDeadzones[curActuator])
     {
       digitalWrite(actuatorDirPins[curActuator], curErDir);
       int scaler = curError; //Seriously, replace this with a less horrible acceleration curve. YOUR CODE IS BAD AND YOU SHOULD FEEL BAD!
-      if (scaler < 64 ) { scaler = 64; }
+      if (scaler < 64 ) { 
+        scaler = 64; 
+      }
       analogWrite(actuatorPWMPins[curActuator], scaler);
     }
     else
@@ -139,7 +166,7 @@ int getActuatorPositionScaled(int actuatorNumber) {
 
 void setActuatorPositionScaled(int actuatorNumber, int positionSetting)
 {
-  
+
 }
 
 void printHelp() {
@@ -164,17 +191,7 @@ void showPositions() {
 
 void showMenu()
 {
-    Serial.println("Actuator Control Mode");
-    Serial.println();
-    Serial.println("Available commands: ");
-    Serial.println("  move [actuator] [position]");
-    Serial.println("  extend [actuator]");
-    Serial.println("  retract [actuator]");
-    Serial.println("  deadzone [actuator] [deadzone]");
-
-    Serial.println("Presets available:");
-    Serial.println("  packup:    Minimizes the size of the BioBike for storage");
-    Serial.println("  starter:   Positions the biobike in an 'average' configuration");
+  Serial.println("Fix Me");
 }
 
 void loadSettings()
@@ -209,38 +226,43 @@ void autoProbeLimits()
 {
   for ( int curActuator = 0; curActuator < ACTUATOR_COUNT; curActuator++ )
   {
-     int lastMillis = millis();
-     Serial.print("Probing minimum for actuator ");
-     Serial.print(curActuator);
-     Serial.print("...");
-     int lastReading = 255;      //Set the last reading to as far from the target as possible
-     bool stillMoving = true;
-     actuatorTargets[curActuator] = actuatorHardLimitsLower[curActuator];
-     while (stillMoving) {
-       moveActuators();
-       //Only do a delta ref check if its been 1000mS since we last checked
-       if ( (millis() - lastMillis) >= 1000 ) {
-         if ( getActuatorPosition(actuatorRefPins[curActuator]) ==  lastReading ) { stillMoving = false; }
-       }
-     }
-     actuatorMinimums[curActuator] = getActuatorPosition(actuatorRefPins[curActuator]);
-     Serial.println(" Done!");
-     
-     lastMillis = millis();
-     Serial.print("Probing maximum for actuator ");
-     Serial.print(curActuator);
-     Serial.print("...");
-     lastReading = 0;      //Set the last reading to as far from the target as possible
-     stillMoving = true;
-     actuatorTargets[curActuator] = actuatorHardLimitsUpper[curActuator];
-     while (stillMoving) {
-       moveActuators();
-       //Only do a delta ref check if its been 1000mS since we last checked
-       if ( (millis() - lastMillis) >= 1000 ) {
-         if ( getActuatorPosition(actuatorRefPins[curActuator]) ==  lastReading ) { stillMoving = false; }
-       }
-     }
-     actuatorMaximums[curActuator] = getActuatorPosition(actuatorRefPins[curActuator]);
-     Serial.println(" Done!");
+    int lastMillis = millis();
+    Serial.print("Probing minimum for actuator ");
+    Serial.print(curActuator);
+    Serial.print("...");
+    int lastReading = 255;      //Set the last reading to as far from the target as possible
+    bool stillMoving = true;
+    actuatorTargets[curActuator] = actuatorHardLimitsLower[curActuator];
+    while (stillMoving) {
+      moveActuators();
+      //Only do a delta ref check if its been 1000mS since we last checked
+      if ( (millis() - lastMillis) >= 1000 ) {
+        if ( getActuatorPosition(actuatorRefPins[curActuator]) ==  lastReading ) { 
+          stillMoving = false; 
+        }
+      }
+    }
+    actuatorMinimums[curActuator] = getActuatorPosition(actuatorRefPins[curActuator]);
+    Serial.println(" Done!");
+
+    lastMillis = millis();
+    Serial.print("Probing maximum for actuator ");
+    Serial.print(curActuator);
+    Serial.print("...");
+    lastReading = 0;      //Set the last reading to as far from the target as possible
+    stillMoving = true;
+    actuatorTargets[curActuator] = actuatorHardLimitsUpper[curActuator];
+    while (stillMoving) {
+      moveActuators();
+      //Only do a delta ref check if its been 1000mS since we last checked
+      if ( (millis() - lastMillis) >= 1000 ) {
+        if ( getActuatorPosition(actuatorRefPins[curActuator]) ==  lastReading ) { 
+          stillMoving = false; 
+        }
+      }
+    }
+    actuatorMaximums[curActuator] = getActuatorPosition(actuatorRefPins[curActuator]);
+    Serial.println(" Done!");
   }
 }
+
